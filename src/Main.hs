@@ -2,6 +2,7 @@ module Main (main) where
 
 import Control.Applicative
 import Data.Char (isDigit, isSpace)
+import Text.ParserCombinators.ReadP (string)
 
 data JSONval
   = JSONNull
@@ -67,7 +68,7 @@ jsonNumber = f <$> notnull (spanP isDigit)
     f digits = JSONNumber $ read digits
 
 jsonString :: Parser JSONval
-jsonString = JSONString <$> (charP '"' *> stringLiteral <* charP '"')
+jsonString = JSONString <$> stringLiteral
 
 ws :: Parser String
 ws = spanP isSpace
@@ -76,17 +77,17 @@ sepBy :: Parser a -> Parser b -> Parser [b]
 sepBy sep elem = (:) <$> elem <*> many (sep *> elem) <|> pure []
 
 jsonArray :: Parser JSONval
-jsonArray = jsonArray <$> charP '[' *> ws *> element <* ws <* charP ']'
+jsonArray = JSONArray <$> (charP '[' *> ws *> element <* ws <* charP ']')
   where
     element = sepBy (ws *> charP ',' <* ws) jsonValue
 
-jsonObejct :: Parser JSONval
-jsonObejct = charP '{' *> ws *> sepBy (ws *> charP ',' <* ws) pair <* ws charP '}'
+jsonObject :: Parser JSONval
+jsonObject = JSONObject <$> (charP '{' *> ws *> sepBy (ws *> charP ',' <* ws) pair <* ws <* charP '}')
   where
-    pair = stringLiteral *> ws *> charP ':' *> ws *> jsonValue
+    pair = (\key _ value -> (key, value)) <$> stringLiteral <*> (ws *> charP ':' *> ws) <*> jsonValue
 
 stringLiteral :: Parser String
-stringLiteral = spanP (/= '"')
+stringLiteral = charP '"' *> spanP (/= '"') <* charP '"'
 
 jsonBool :: Parser JSONval
 jsonBool = f <$> ((stringP "true") <|> (stringP "false"))
@@ -96,7 +97,12 @@ jsonBool = f <$> ((stringP "true") <|> (stringP "false"))
     f _ = undefined
 
 jsonValue :: Parser JSONval
-jsonValue = jsonNull <|> jsonBool <|> jsonNumber <|> jsonString <|> jsonArray
+jsonValue = jsonNull <|> jsonBool <|> jsonNumber <|> jsonString <|> jsonArray <|> jsonArray <|> jsonObject
+
+parseFile :: FilePath -> Parser a -> IO (Maybe a)
+parseFile file parser = do
+  input <- readFile file
+  return (snd <$> runParser parser input)
 
 main :: IO ()
 main = undefined
